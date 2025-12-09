@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GomelBus Ultimate</title>
+    <!-- Шрифт -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet">
+    <!-- Стили Карты (Leaflet) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        :root {
+            --primary: #ff4757;
+            --accent: #2ed573;
+            --dark-bg: #1e272e;
+            --card-bg: rgba(30, 39, 46, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text-main: #ffffff;
+            --text-sec: #a4b0be;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background: #000;
+            color: var(--text-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* --- Animated Background --- */
+        .bg-gradient {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at 10% 20%, rgba(255, 71, 87, 0.2) 0%, transparent 40%),
+                        radial-gradient(circle at 90% 80%, rgba(55, 66, 250, 0.2) 0%, transparent 40%),
+                        radial-gradient(circle at 50% 50%, #1e272e 0%, #000 100%);
+            z-index: -2;
+        }
+
+        .orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(80px);
+            z-index: -1;
+            transition: transform 0.1s linear;
+            opacity: 0.5;
+        }
+        .orb-1 { width: 300px; height: 300px; background: #ff4757; top: 10%; left: 10%; }
+        .orb-2 { width: 400px; height: 400px; background: #2ed573; bottom: 10%; right: 10%; }
+
+        /* --- Layout --- */
+        .app-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding-bottom: 100px;
+        }
+
+        header { text-align: center; padding: 20px 0; }
+        .logo-text { font-size: 2rem; font-weight: 800; letter-spacing: -1px; }
+        .logo-icon { display: inline-block; font-size: 2.5rem; animation: bounce 2s infinite; }
+
+        /* --- Search --- */
+        .search-box {
+            position: sticky; top: 20px; z-index: 90;
+            background: rgba(47, 53, 66, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            display: flex;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        input {
+            width: 100%; padding: 15px; background: transparent; border: none;
+            color: #fff; font-size: 1.1rem; outline: none;
+        }
+        .search-btn {
+            background: var(--primary); border: none; color: #fff;
+            width: 50px; border-radius: 0 16px 16px 0; cursor: pointer; font-size: 1.2rem;
+        }
+
+        /* --- Map Widget --- */
+        .map-wrapper {
+            position: relative;
+            height: 300px;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transition: all 0.5s ease;
+        }
+
+        /* Режим фуллскрин карты */
+        .map-wrapper.fullscreen {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100vh;
+            z-index: 9999;
+            border-radius: 0;
+        }
+
+        #gomel-map { width: 100%; height: 100%; background: #1e272e; }
+
+        .map-controls {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 1000;
+            display: flex;
+            gap: 10px;
+        }
+
+        .map-btn {
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+        .map-btn:hover { background: var(--primary); }
+
+        /* --- Bus Cards --- */
+        .bus-card {
+            background: var(--card-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 15px;
+            margin-bottom: 15px;
+            animation: slideUp 0.5s forwards;
+            opacity: 0;
+            backdrop-filter: blur(5px);
+        }
+
+        .card-top {
+            display: flex; align-items: center; gap: 15px; cursor: pointer;
+        }
+
+        .bus-num {
+            min-width: 50px; height: 50px;
+            background: linear-gradient(135deg, #ff4757, #ff6b81);
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 1.4rem;
+            box-shadow: 0 5px 15px rgba(255, 71, 87, 0.4);
+        }
+
+        .bus-route { flex: 1; }
+        .bus-route h3 { font-size: 1rem; margin-bottom: 3px; }
+        .bus-route p { font-size: 0.8rem; color: var(--text-sec); }
+
+        .expand-icon { font-size: 1.5rem; color: var(--text-sec); transition: transform 0.3s; }
+        .expanded .expand-icon { transform: rotate(180deg); }
+
+        /* --- Stops List --- */
+        .stops-container {
+            max-height: 0; overflow: hidden; transition: max-height 0.4s ease;
+            padding-left: 20px; border-left: 2px solid rgba(255,255,255,0.1);
+            margin-left: 25px; margin-top: 5px;
+        }
+
+        .stop-item {
+            padding: 8px 0;
+            color: #ced6e0;
+            font-size: 0.9rem;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.2s;
+            display: flex; align-items: center; gap: 10px;
+        }
+
+        .stop-item::before {
+            content: ''; width: 8px; height: 8px; border-radius: 50%;
+            background: var(--glass-border); transition: background 0.2s;
+        }
+
+        .stop-item:hover { color: var(--accent); }
+        .stop-item:hover::before { background: var(--accent); }
+
+        /* --- Animations --- */
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        @keyframes slideUp { to { opacity: 1; } }
+
+        /* --- Leaflet Dark Override --- */
+        .leaflet-control-layers {
+            background: rgba(30, 39, 46, 0.9) !important;
+            color: #fff !important;
+            border: 1px solid rgba(255,255,255,0.2) !important;
+            border-radius: 12px !important;
+        }
+        .leaflet-popup-content-wrapper { background: #2f3542; color: #fff; }
+        .leaflet-popup-tip { background: #2f3542; }
+
+    </style>
+</head>
+<body>
+
+    <div class="bg-gradient"></div>
+    <div class="orb orb-1" id="orb1"></div>
+    <div class="orb orb-2" id="orb2"></div>
+
+    <div class="app-container">
+        
+        <header>
+            <div class="logo-icon">🚌</div>
+            <div class="logo-text">GomelBus</div>
+        </header>
+
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Поиск (например: Вокзал)">
+            <button class="search-btn" onclick="searchBuses()">🔍</button>
+        </div>
+
+        <!-- Карта с кнопкой раскрытия -->
+        <div class="map-wrapper" id="mapWrapper">
+            <div class="map-controls">
+                <button class="map-btn" onclick="toggleMapSize()">⛶ Развернуть</button>
+            </div>
+            <div id="gomel-map"></div>
+        </div>
+
+        <div id="results">
+            <!-- Список автобусов -->
+        </div>
+
+    </div>
+
+    <!-- Библиотека Leaflet -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // --- 1. Координаты остановок (Упрощенная база) ---
+        const stopsDB = {
+            "вокзал": [52.4245, 30.9965],
+            "злин": [52.4630, 30.9630],
+            "кристалл": [52.3920, 31.0250],
+            "медгородок": [52.4050, 30.9350],
+            "южный": [52.3850, 31.0100],
+            "универмаг": [52.4280, 31.0050],
+            "парк": [52.4220, 31.0120],
+            "солнечная": [52.4550, 30.9500],
+            "волотова": [52.4600, 31.0300],
+            "речицкий": [52.4150, 30.9550],
+            "химзавод": [52.4200, 30.8800],
+            "сельмаш": [52.4450, 30.9700],
+            "университет": [52.4080, 30.9400],
+            "аэродром": [52.4650, 30.9900],
+            "ильича": [52.3900, 31.0200]
+        };
+
+        // Если остановки нет в базе, генерируем случайную точку рядом с центром
+        function getCoords(name) {
+            const key = name.toLowerCase().split(' ')[0]; // берем первое слово для поиска
+            if (stopsDB[key]) return stopsDB[key];
+            // Фейковые координаты для демонстрации, если нет в базе
+            return [52.4250 + (Math.random()-0.5)*0.05, 30.9950 + (Math.random()-0.5)*0.05];
+        }
+
+        // --- 2. Данные автобусов ---
+        const buses = [
+            { id: '1', number: '1', route: 'Вокзал — Любенский', stops: ['вокзал', 'парк', 'любенский', 'солнечная'] },
+            { id: '2', number: '2', route: 'Вокзал — Южный', stops: ['вокзал', 'южный', 'кристалл'] },
+            { id: '3', number: '5', route: 'ЗЛиН — Кристалл', stops: ['злин', 'сельмаш', 'универмаг', 'кристалл'] },
+            { id: '4', number: '17', route: 'Медгородок — Клёнковский', stops: ['медгородок', 'универмаг', 'волотова'] },
+            { id: '5', number: '20', route: 'Старая Волотова — Медгородок', stops: ['волотова', 'университет', 'медгородок'] },
+            { id: '6', number: '55', route: 'Вокзал — Химзавод', stops: ['вокзал', 'речицкий', 'химзавод'] }
+            // Можно добавить все 50 из прошлого кода сюда
+        ];
+
+        // --- 3. Инициализация Карты ---
+        let map;
+        let currentMarker;
+
+        function initMap() {
+            // Слои карты
+            const darkScheme = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '', subdomains: 'abcd', maxZoom: 19
+            });
+
+            const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: ''
+            });
+
+            // Гибрид = Спутник + Подписи (используем CartoDB labels поверх спутника)
+            const hybridLabels = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
+                attribution: '', subdomains: 'abcd'
+            });
+            const hybridGroup = L.layerGroup([satellite, hybridLabels]);
+
+            // Создаем карту
+            map = L.map('gomel-map', {
+                center: [52.4251, 31.0150],
+                zoom: 12,
+                layers: [darkScheme], // Слой по умолчанию
+                zoomControl: false
+            });
+
+            // Контрол слоев (Справа сверху)
+            const baseMaps = {
+                "Схема": darkScheme,
+                "Спутник": satellite,
+                "Гибрид": hybridGroup
+            };
+            L.control.layers(baseMaps).addTo(map);
+
+            // Кнопка зума в удобное место
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+        }
+
+        // --- 4. Логика Карты ---
+        
+        // Развернуть / Свернуть карту
+        function toggleMapSize() {
+            const wrapper = document.getElementById('mapWrapper');
+            const btn = wrapper.querySelector('.map-btn');
+            
+            wrapper.classList.toggle('fullscreen');
+            
+            if (wrapper.classList.contains('fullscreen')) {
+                btn.textContent = "✕ Закрыть";
+                document.body.style.overflow = "hidden"; // Блокируем скролл сайта
+            } else {
+                btn.textContent = "⛶ Развернуть";
+                document.body.style.overflow = "auto";
+            }
+            
+            // Важно! Сообщаем карте, что размер изменился, чтобы подгрузить тайлы
+            setTimeout(() => { map.invalidateSize(); }, 300);
+        }
+
+        // Показать остановку на карте
+        function showStopOnMap(name, event) {
+            // Останавливаем всплытие клика, чтобы не свернулась карточка автобуса
+            if(event) event.stopPropagation();
+
+            const coords = getCoords(name);
+            
+            // Если карта была далеко, летим к точке
+            map.flyTo(coords, 15, { duration: 1.5 });
+
+            // Удаляем старый маркер
+            if (currentMarker) map.removeLayer(currentMarker);
+
+            // Ставим новый красный маркер
+            currentMarker = L.circleMarker(coords, {
+                color: '#ff4757',
+                fillColor: '#ff4757',
+                fillOpacity: 0.8,
+                radius: 10
+            }).addTo(map)
+            .bindPopup(`<b style="font-size:14px">${name.toUpperCase()}</b>`)
+            .openPopup();
+
+            // Если это мобилка, скроллим к карте (если она не фуллскрин)
+            if (!document.getElementById('mapWrapper').classList.contains('fullscreen')) {
+                document.getElementById('mapWrapper').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        // --- 5. Рендер списка ---
+        function renderList(list) {
+            const container = document.getElementById('results');
+            container.innerHTML = '';
+            
+            list.forEach((bus, i) => {
+                const el = document.createElement('div');
+                el.className = 'bus-card';
+                el.style.animationDelay = i * 0.1 + 's';
+                
+                el.innerHTML = `
+                    <div class="card-top" onclick="toggleCard(this)">
+                        <div class="bus-num">${bus.number}</div>
+                        <div class="bus-route">
+                            <h3>${bus.route}</h3>
+                            <p>${bus.stops.length} остановок</p>
+                        </div>
+                        <div class="expand-icon">⌄</div>
+                    </div>
+                    <div class="stops-container">
+                        ${bus.stops.map(stop => 
+                            // Добавляем onclick для каждой остановки
+                            `<div class="stop-item" onclick="showStopOnMap('${stop}', event)">
+                                ${capitalize(stop)}
+                            </div>`
+                        ).join('')}
+                    </div>
+                `;
+                container.appendChild(el);
+            });
+        }
+
+        function toggleCard(header) {
+            const card = header.parentElement;
+            const container = card.querySelector('.stops-container');
+            
+            card.classList.toggle('expanded');
+            
+            if (card.classList.contains('expanded')) {
+                container.style.maxHeight = container.scrollHeight + "px";
+            } else {
+                container.style.maxHeight = null;
+            }
+        }
+
+        function searchBuses() {
+            const val = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = buses.filter(b => 
+                b.number.toLowerCase().includes(val) || 
+                b.route.toLowerCase().includes(val) ||
+                b.stops.some(s => s.includes(val))
+            );
+            renderList(filtered);
+        }
+
+        function capitalize(s) { return s[0].toUpperCase() + s.slice(1); }
+
+        // Параллакс
+        document.addEventListener('mousemove', (e) => {
+            const x = (window.innerWidth - e.pageX*2)/100;
+            const y = (window.innerHeight - e.pageY*2)/100;
+            document.getElementById('orb1').style.transform = `translate(${x}px,${y}px)`;
+            document.getElementById('orb2').style.transform = `translate(${-x}px,${-y}px)`;
+        });
+
+        // Старт
+        window.onload = () => {
+            initMap();
+            renderList(buses);
+        };
+
+    </script>
+</body>
+</html>
